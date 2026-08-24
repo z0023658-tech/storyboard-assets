@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>拍攝前期工作流程｜Metro Workflow v11</title>
+<style>
+:root{
+  --bg:#0b0d10;
+  --text:#f3f5f7;
+  --muted:#7c8692;
+  --p1:#63b3ed;
+  --p2:#f2a65a;
+  --p3:#63c58b;
+  --border:#2a313a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+body{
+  font-family:Inter,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  overflow-x:hidden;
+}
+button{font:inherit}
+.wrap{
+  min-height:100vh;
+  padding:24px clamp(16px,2.6vw,36px) 30px;
+  display:flex;
+  flex-direction:column;
+}
+.top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:20px;
+}
+h1{
+  margin:0;
+  font-size:clamp(26px,3vw,42px);
+  letter-spacing:-.035em;
+  line-height:1;
+}
+.controls{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.btn{
+  border:1px solid var(--border);
+  background:transparent;
+  color:var(--muted);
+  padding:9px 13px;
+  border-radius:11px;
+  cursor:pointer;
+  transition:.2s ease;
+}
+.btn:hover{color:var(--text);border-color:#46505c}
+.btn.active{
+  background:#eef2f5;
+  color:#0b0d10;
+  border-color:#eef2f5;
+  font-weight:760;
+}
+.btn.secondary{font-size:12px;padding:8px 11px}
+.hidden{display:none!important}
+
+.legend{
+  display:flex;
+  gap:18px;
+  margin-top:18px;
+  font-size:12px;
+  color:#9aa3ad;
+  flex-wrap:wrap;
+}
+.legend-item{display:flex;align-items:center;gap:7px}
+.legend-line{width:23px;height:4px;border-radius:10px}
+.legend-line.p1{background:var(--p1)}
+.legend-line.p2{background:var(--p2)}
+.legend-line.p3{background:var(--p3)}
+
+.stage{
+  position:relative;
+  width:100%;
+  height:clamp(500px,65vw,620px);
+  max-height:620px;
+  min-height:500px;
+  margin-top:6px;
+  overflow:hidden;
+}
+
+/* one shared route composed by colored segments */
+.route-layer{
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+}
+.route-seg{
+  position:absolute;
+  height:6px;
+  border-radius:99px;
+  top:0;
+  left:0;
+  box-shadow:0 0 0 3px rgba(0,0,0,.42);
+  transition:
+    left .42s cubic-bezier(.2,.8,.2,1),
+    top .42s cubic-bezier(.2,.8,.2,1),
+    width .42s cubic-bezier(.2,.8,.2,1),
+    opacity .18s ease,
+    transform .28s cubic-bezier(.2,.8,.2,1);
+}
+.route-seg.p1{background:var(--p1)}
+.route-seg.p2{background:var(--p2)}
+.route-seg.p3{background:var(--p3)}
+.route-seg.vertical{
+  width:6px;height:0;
+  transform-origin:center top;
+}
+.route-seg.shrinkX{transform:scaleX(0)}
+.route-seg.shrinkY{transform:scaleY(0)}
+.route-seg.growX{animation:growX .34s cubic-bezier(.2,.8,.2,1) both}
+.route-seg.growY{animation:growY .34s cubic-bezier(.2,.8,.2,1) both}
+@keyframes growX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes growY{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+
+/* stations */
+.station{
+  --phase:#eef2f5;
+  position:absolute;
+  width:clamp(100px,9.6vw,138px);
+  min-height:1px;
+  transform:translateX(-50%);
+  z-index:3;
+  transition:
+    left .42s cubic-bezier(.2,.8,.2,1),
+    top .42s cubic-bezier(.2,.8,.2,1),
+    opacity .18s ease;
+}
+.station.phase1{--phase:var(--p1)}
+.station.phase2{--phase:var(--p2)}
+.station.phase3{--phase:var(--p3)}
+.pin{
+  position:absolute;
+  left:50%;
+  top:0;
+  width:40px;
+  height:40px;
+  transform:translate(-50%,-50%);
+  display:grid;
+  place-items:center;
+  transition:
+    transform .22s ease,
+    filter .22s ease;
+}
+.pin-dot{
+  display:block;
+  width:16px;
+  height:16px;
+  aspect-ratio:1 / 1;
+  flex:0 0 auto;
+  box-sizing:border-box;
+  border-radius:50%;
+  background:var(--bg);
+  border:4px solid var(--phase);
+  box-shadow:0 0 0 3px var(--bg);
+  transition:
+    transform .2s ease,
+    box-shadow .2s ease,
+    background .2s ease,
+    border-color .2s ease;
+}
+.label{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  width:max-content;
+  max-width:160px;
+  text-align:center;
+  color:#e9edf1;
+  font-size:clamp(14px,1.2vw,17px);
+  line-height:1.2;
+  font-weight:650;
+}
+.station.lane-below .label{
+  top:27px;
+  bottom:auto;
+}
+.station.lane-above .label{
+  top:auto;
+  bottom:27px;
+}
+#app.ai-view .station:not(.source-hidden) .label{
+  top:auto;
+  bottom:30px;
+}
+.station.key .pin-dot{
+  width:21px;
+  height:21px;
+  border-width:5px;
+}
+.station.key .label{font-weight:780}
+.station.preview-keep .pin-dot{
+  transform:scale(1.2);
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 0 8px color-mix(in srgb,var(--phase) 18%,transparent);
+}
+.station.preview-collapse .pin-dot{
+  background:var(--phase);
+  transform:scale(.9);
+}
+.station.preview-collapse .label{opacity:.58}
+.station.source-hidden{opacity:0;pointer-events:none}
+.station.anchor.absorbing .pin-dot{
+  animation:anchorPulse .2s ease;
+}
+@keyframes anchorPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.3)}
+}
+
+/* hubs */
+.hub{
+  width:clamp(112px,10vw,150px);
+  cursor:pointer;
+  overflow:visible;
+}
+.hub .pin{
+  width:48px;
+  height:48px;
+}
+.hub .pin-dot{
+  width:30px;
+  height:30px;
+  aspect-ratio:1 / 1;
+  border-width:5px;
+  position:relative;
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 0 7px color-mix(in srgb,var(--phase) 19%,transparent);
+}
+.hub .pin-dot::after{
+  content:"";
+  position:absolute;
+  inset:6px;
+  border-radius:50%;
+  background:var(--phase);
+}
+.hub .label{
+  color:color-mix(in srgb,var(--phase) 65%,white);
+  font-weight:800;
+}
+.hub .plus{
+  position:absolute;
+  top:-19px;
+  right:5px;
+  width:22px;height:22px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  border:1px solid color-mix(in srgb,var(--phase) 44%,transparent);
+  background:#101419;
+  color:var(--phase);
+  font-size:14px;line-height:1;
+  transition:.24s ease;
+}
+@media (hover:hover) and (pointer:fine){
+  .hub:hover .pin{
+    transform:translate(-50%,calc(-50% - 4px));
+  }
+  .hub:hover .pin-dot{
+    transform:scale(1.08);
+    box-shadow:
+      0 0 0 4px var(--bg),
+      0 0 0 11px color-mix(in srgb,var(--phase) 12%,transparent);
+  }
+  .hub:hover .label{color:#fff}
+  .hub:hover .plus{
+    transform:rotate(12deg) scale(1.05);
+    background:#17202a;
+  }
+}
+.hub.open .plus{transform:rotate(45deg)}
+
+.tool-badge{
+  position:absolute;
+  top:38px;left:50%;
+  transform:translateX(-50%) translateY(-4px);
+  opacity:0;
+  white-space:nowrap;
+  pointer-events:none;
+  padding:5px 8px;
+  border-radius:8px;
+  border:1px solid color-mix(in srgb,var(--phase) 30%,transparent);
+  background:#11161b;
+  color:#d9e1e8;
+  font-size:10.5px;
+  transition:.22s ease;
+}
+.tools-on .tool-badge{
+  opacity:1;
+  transform:translateX(-50%) translateY(0);
+}
+.detail{
+  position:absolute;
+  left:50%;
+  top:48px;
+  width:172px;
+  transform:translateX(-50%);
+  display:block;
+  pointer-events:none;
+  z-index:12;
+}
+.detail-spine{
+  position:absolute;
+  top:0;left:50%;
+  width:3px;height:0;
+  border-radius:4px;
+  background:var(--phase);
+  transform:translateX(-50%);
+  transition:height .32s cubic-bezier(.2,.8,.2,1);
+}
+.detail-items{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding-top:18px;
+}
+.detail-stop{
+  width:156px;
+  min-height:38px;
+  margin:0 auto;
+  border-radius:10px;
+  border:1px solid color-mix(in srgb,var(--phase) 28%,transparent);
+  background:rgba(17,22,27,.98);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:7px 10px;
+  font-size:11.5px;
+  line-height:1.2;
+  color:#e2e9ef;
+  opacity:0;
+  transform:translateY(-6px);
+  transition:opacity .18s ease,transform .2s ease;
+  box-shadow:0 8px 22px rgba(0,0,0,.18);
+}
+.hub.open .detail{pointer-events:auto}
+.hub.open .detail-spine{height:calc(100% - 18px)}
+.hub.open .detail-stop{opacity:1;transform:translateY(0)}
+.hub.open .detail-stop:nth-child(1){transition-delay:.10s}
+.hub.open .detail-stop:nth-child(2){transition-delay:.14s}
+.hub.open .detail-stop:nth-child(3){transition-delay:.18s}
+.hub.open .detail-stop:nth-child(4){transition-delay:.22s}
+.hub.open .detail-stop:nth-child(5){transition-delay:.26s}
+
+/* flyers */
+.flyer{
+  position:fixed;
+  z-index:999;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  width:118px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+}
+.flyer .pin{
+  position:relative;
+  left:auto;
+  top:auto;
+  width:40px;
+  height:40px;
+  transform:none;
+}
+.flyer .pin-dot{
+  position:relative;
+}
+.flyer .label{
+  position:relative;
+  left:auto;
+  top:auto;
+  bottom:auto;
+  transform:none;
+  margin-top:9px;
+  font-size:14px;
+  white-space:nowrap;
+  min-height:unset;
+}
+.caption{
+  height:18px;
+  text-align:center;
+  color:var(--muted);
+  font-size:11px;
+  letter-spacing:.06em;
+}
+@media (max-width:900px){
+  .top{flex-direction:column}
+  .controls{justify-content:flex-start}
+  .station{width:88px}
+  .label{
+    font-size:12px;
+    max-width:96px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header class="top">
+    <h1>拍攝前期工作流程</h1>
+    <div class="controls">
+      <button class="btn active" id="tradBtn" type="button">傳統流程</button>
+      <button class="btn" id="aiBtn" type="button">AI 介入</button>
+      <button class="btn secondary hidden" id="toolsBtn" type="button">工具說明</button>
+      <button class="btn secondary hidden" id="expandBtn" type="button">全部展開</button>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span class="legend-item"><i class="legend-line p1"></i>01 客戶填表</span>
+    <span class="legend-item"><i class="legend-line p2"></i>02 分鏡製作</span>
+    <span class="legend-item"><i class="legend-line p3"></i>03 提案網頁</span>
+  </div>
+
+  <main class="stage" id="stage">
+    <div class="route-layer">
+      <div class="route-seg p1" id="tp1"></div>
+      <div class="route-seg p2" id="tp2"></div>
+      <div class="route-seg p3" id="tp3"></div>
+      <div class="route-seg p1 vertical" id="tv1"></div>
+      <div class="route-seg p2 vertical" id="tv2"></div>
+      <div class="route-seg p1 hidden" id="ap1"></div>
+      <div class="route-seg p2 hidden" id="ap2"></div>
+      <div class="route-seg p3 hidden" id="ap3"></div>
+    </div>
+
+    <div class="station phase1 shared lane-below" data-id="s1"><span class="pin"><span class="pin-dot"></span></span><span class="label">收到需求</span></div>
+    <div class="station phase1 collapse anchor lane-below" data-id="s2" data-group="analysis"><span class="pin"><span class="pin-dot"></span></span><span class="label">閱讀需求</span></div>
+    <div class="station phase1 collapse lane-below" data-id="s3" data-group="analysis"><span class="pin"><span class="pin-dot"></span></span><span class="label">產品分析</span></div>
+    <div class="station phase1 collapse lane-below" data-id="s4" data-group="analysis"><span class="pin"><span class="pin-dot"></span></span><span class="label">行銷方向</span></div>
+    <div class="station phase1 collapse lane-below" data-id="s5" data-group="analysis"><span class="pin"><span class="pin-dot"></span></span><span class="label">競品分析</span></div>
+    <div class="station phase1 collapse lane-below" data-id="s6" data-group="analysis"><span class="pin"><span class="pin-dot"></span></span><span class="label">影片目標</span></div>
+    <div class="station phase1 shared key lane-above" data-id="s7"><span class="pin"><span class="pin-dot"></span></span><span class="label">第一次會議<br>需求確認</span></div>
+
+    <div class="station phase2 collapse anchor lane-above" data-id="s9" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">創意發想</span></div>
+    <div class="station phase2 collapse lane-above" data-id="s10" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">文字腳本</span></div>
+    <div class="station phase2 collapse lane-above" data-id="s11" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">2–3 個版本</span></div>
+    <div class="station phase2 collapse lane-above" data-id="s12" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">客戶選稿</span></div>
+    <div class="station phase2 collapse lane-above" data-id="s13" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">拆分鏡</span></div>
+    <div class="station phase2 collapse lane-above" data-id="s14" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">想畫面</span></div>
+    <div class="station phase2 collapse lane-above" data-id="s15" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">找 Reference</span></div>
+    <div class="station phase2 collapse lane-above" data-id="s16" data-group="visual"><span class="pin"><span class="pin-dot"></span></span><span class="label">截圖整理</span></div>
+
+    <div class="station phase3 collapse anchor lane-below" data-id="s17" data-group="finish"><span class="pin"><span class="pin-dot"></span></span><span class="label">排分鏡</span></div>
+    <div class="station phase3 collapse lane-below" data-id="s18" data-group="finish"><span class="pin"><span class="pin-dot"></span></span><span class="label">寫 CUT<br>資訊</span></div>
+    <div class="station phase3 collapse lane-below" data-id="s19" data-group="finish"><span class="pin"><span class="pin-dot"></span></span><span class="label">找音樂</span></div>
+    <div class="station phase3 collapse lane-below" data-id="s20" data-group="finish"><span class="pin"><span class="pin-dot"></span></span><span class="label">人工排版</span></div>
+    <div class="station phase3 collapse lane-below" data-id="s21" data-group="finish"><span class="pin"><span class="pin-dot"></span></span><span class="label">完稿</span></div>
+    <div class="station phase3 shared key lane-below" data-id="s22"><span class="pin"><span class="pin-dot"></span></span><span class="label">客戶提案</span></div>
+
+    <div class="station phase1 hub hidden lane-above" data-id="ha">
+      <span class="pin"><span class="pin-dot"></span></span><span class="label">前期分析</span><span class="plus">＋</span>
+      <span class="tool-badge">Google Sheet · GAS</span>
+      <div class="detail">
+        <div class="detail-spine"></div>
+        <div class="detail-items">
+          <div class="detail-stop">閱讀需求</div>
+          <div class="detail-stop">產品分析</div>
+          <div class="detail-stop">行銷方向</div>
+          <div class="detail-stop">競品分析</div>
+          <div class="detail-stop">影片目標</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="station phase2 hub hidden lane-above" data-id="hv">
+      <span class="pin"><span class="pin-dot"></span></span><span class="label">視覺分鏡</span><span class="plus">＋</span>
+      <span class="tool-badge">ComfyUI</span>
+      <div class="detail">
+        <div class="detail-spine"></div>
+        <div class="detail-items">
+          <div class="detail-stop">定義方向</div>
+          <div class="detail-stop">AI 視覺探索</div>
+          <div class="detail-stop">挑選畫面</div>
+          <div class="detail-stop">重新組合</div>
+          <div class="detail-stop">再生成／修正</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="station phase3 hub hidden lane-above" data-id="hf">
+      <span class="pin"><span class="pin-dot"></span></span><span class="label">分鏡完稿</span><span class="plus">＋</span>
+      <span class="tool-badge">Storyboard Workbench</span>
+      <div class="detail">
+        <div class="detail-spine"></div>
+        <div class="detail-items">
+          <div class="detail-stop">排 CUT</div>
+          <div class="detail-stop">補齊資訊</div>
+          <div class="detail-stop">整理音樂</div>
+          <div class="detail-stop">HTML 提案頁</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="caption" id="caption"></div>
+</div>
+
+<script>
+(() => {
+  const app=document.getElementById('app');
+  const stage=document.getElementById('stage');
+  const tradBtn=document.getElementById('tradBtn');
+  const aiBtn=document.getElementById('aiBtn');
+  const toolsBtn=document.getElementById('toolsBtn');
+  const expandBtn=document.getElementById('expandBtn');
+  const caption=document.getElementById('caption');
+
+  const tradLineEls={
+    p1:document.getElementById('tp1'),
+    p2:document.getElementById('tp2'),
+    p3:document.getElementById('tp3'),
+    v1:document.getElementById('tv1'),
+    v2:document.getElementById('tv2')
+  };
+  const aiLineEls={
+    p1:document.getElementById('ap1'),
+    p2:document.getElementById('ap2'),
+    p3:document.getElementById('ap3')
+  };
+
+  const tradRows = {
+    row1:['s1','s2','s3','s4','s5','s6','s7'],
+    row2:['s9','s10','s11','s12','s13','s14','s15','s16'],
+    row3:['s17','s18','s19','s20','s21','s22']
+  };
+  const tradY = {row1:16,row2:44,row3:72};
+  const tradRange = {
+    row1:[6,84],
+    row2:[7,84],
+    row3:[7,85]
+  };
+
+  const aiMain=['s1','ha','s7','hv','hf','s22'];
+  const aiY=24;
+  const aiRange=[7,93];
+
+  const anchorByGroup={analysis:'s2',visual:'s9',finish:'s17'};
+  const hubByGroup={analysis:'ha',visual:'hv',finish:'hf'};
+  const followers=['s3','s4','s5','s6','s10','s11','s12','s13','s14','s15','s16','s18','s19','s20','s21'];
+
+  let mode='trad';
+  let animating=false;
+  let toolsOn=false;
+
+  const station=id=>stage.querySelector(`[data-id="${id}"]`);
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+  function evenlyPositions(ids,start,end,y){
+    const step = ids.length===1 ? 0 : (end-start)/(ids.length-1);
+    return Object.fromEntries(ids.map((id,i)=>[id,[start+step*i,y]]));
+  }
+
+  function traditionalPositions(){
+    return {
+      ...evenlyPositions(tradRows.row1, tradRange.row1[0], tradRange.row1[1], tradY.row1),
+      ...evenlyPositions(tradRows.row2, tradRange.row2[0], tradRange.row2[1], tradY.row2),
+      ...evenlyPositions(tradRows.row3, tradRange.row3[0], tradRange.row3[1], tradY.row3),
+    };
+  }
+
+  function aiPositions(){
+    return evenlyPositions(aiMain, aiRange[0], aiRange[1], aiY);
+  }
+
+  function setPos(el,pos){
+    el.style.left=pos[0]+'%';
+    el.style.top=pos[1]+'%';
+  }
+
+  function layoutTraditional(){
+    const pos = traditionalPositions();
+    Object.entries(pos).forEach(([id,p])=>setPos(station(id),p));
+    setLineH(tradLineEls.p1, tradRange.row1[0], tradRange.row1[1], tradY.row1);
+    setLineH(tradLineEls.p2, tradRange.row2[0], tradRange.row2[1], tradY.row2);
+    setLineH(tradLineEls.p3, tradRange.row3[0], tradRange.row3[1], tradY.row3);
+    setLineV(tradLineEls.v1, tradRange.row1[1], tradY.row1, tradY.row2);
+    setLineV(tradLineEls.v2, tradRange.row2[0], tradY.row2, tradY.row3);
+  }
+
+  function layoutAI(){
+    const pos = aiPositions();
+    Object.entries(pos).forEach(([id,p])=>setPos(station(id),p));
+    const step = (aiRange[1]-aiRange[0])/(aiMain.length-1);
+    setLineH(aiLineEls.p1, aiRange[0], aiRange[0] + step*2, aiY);
+    setLineH(aiLineEls.p2, aiRange[0] + step*2, aiRange[0] + step*3, aiY);
+    setLineH(aiLineEls.p3, aiRange[0] + step*3, aiRange[1], aiY);
+  }
+
+  function setLineH(el,x1,x2,y){
+    el.style.left=x1+'%';
+    el.style.top=y+'%';
+    el.style.width=(x2-x1)+'%';
+    el.style.height='6px';
+  }
+  function setLineV(el,x,y1,y2){
+    el.style.left=x+'%';
+    el.style.top=y1+'%';
+    el.style.width='6px';
+    el.style.height=(y2-y1)+'%';
+  }
+
+  function initialize(){
+    layoutTraditional();
+    ['ha','hv','hf'].forEach(id=>station(id).classList.add('hidden'));
+    Object.values(aiLineEls).forEach(el=>el.classList.add('hidden'));
+  }
+
+  function clearPreview(){
+    stage.querySelectorAll('.station').forEach(el=>el.classList.remove('preview-keep','preview-collapse'));
+  }
+
+  function makeFlyer(source){
+    const r=source.getBoundingClientRect();
+    const c=source.cloneNode(true);
+    c.classList.add('flyer');
+    c.classList.remove('preview-collapse','source-hidden','anchor');
+    c.querySelectorAll('.detail,.tool-badge,.plus').forEach(x=>x.remove());
+    c.style.left=(r.left+r.width/2)+'px';
+    c.style.top=(r.top+r.height/2)+'px';
+    c.style.width=r.width+'px';
+    document.body.appendChild(c);
+    return {el:c,x:r.left+r.width/2,y:r.top+r.height/2};
+  }
+
+  function anchorCenter(group){
+    const r=station(anchorByGroup[group]).getBoundingClientRect();
+    return {x:r.left+r.width/2,y:r.top+r.height/2};
+  }
+
+  async function flyFollower(source,delay){
+    await sleep(delay);
+    const group=source.dataset.group;
+    const target=anchorCenter(group);
+    const flyer=makeFlyer(source);
+    source.classList.add('source-hidden');
+    const dx=target.x-flyer.x,dy=target.y-flyer.y;
+
+    await flyer.el.animate([
+      {opacity:1,transform:'translateX(-50%) scale(1)'},
+      {opacity:.8,offset:.7,transform:`translate(calc(-50% + ${dx*.7}px),calc(-50% + ${dy*.7}px)) scale(.62)`},
+      {opacity:0,transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(.15)`}
+    ],{duration:215,easing:'linear',fill:'forwards'}).finished.catch(()=>{});
+
+    const anchor=station(anchorByGroup[group]);
+    anchor.classList.remove('absorbing');
+    void anchor.offsetWidth;
+    anchor.classList.add('absorbing');
+    flyer.el.remove();
+  }
+
+  async function morphAnchors(){
+    ['analysis','visual','finish'].forEach(group=>{
+      const anchor=station(anchorByGroup[group]);
+      const hub=station(hubByGroup[group]);
+      const sr=stage.getBoundingClientRect();
+      const ar=anchor.getBoundingClientRect();
+      setPos(hub,[
+        (ar.left+ar.width/2-sr.left)/sr.width*100,
+        (ar.top+ar.height/2-sr.top)/sr.height*100
+      ]);
+      hub.classList.remove('hidden');
+      anchor.animate([
+        {opacity:1,transform:'translateX(-50%) scale(1)'},
+        {opacity:0,transform:'translateX(-50%) scale(.58)'}
+      ],{duration:170,easing:'ease',fill:'forwards'});
+      hub.animate([
+        {opacity:0,transform:'translateX(-50%) scale(.55)'},
+        {opacity:1,transform:'translateX(-50%) scale(1)'}
+      ],{duration:210,easing:'cubic-bezier(.2,.8,.2,1)'});
+      anchor.classList.add('source-hidden');
+    });
+    await sleep(170);
+  }
+
+  async function shrinkTraditionalLineAndMoveStations(){
+    layoutAI();
+    Object.values(tradLineEls).forEach(el=>{
+      if(el.classList.contains('vertical')) el.classList.add('shrinkY');
+      else el.classList.add('shrinkX');
+    });
+    await sleep(420);
+    Object.values(tradLineEls).forEach(el=>el.style.opacity='0');
+  }
+
+  async function growAILine(){
+    Object.values(aiLineEls).forEach(el=>{
+      el.classList.remove('hidden');
+      el.classList.remove('growX');
+      el.style.opacity='1';
+    });
+    aiLineEls.p1.classList.add('growX');
+    aiLineEls.p2.classList.add('growX');
+    aiLineEls.p3.classList.add('growX');
+    await sleep(340);
+  }
+
+  async function switchToAI(){
+    if(animating||mode==='ai')return;
+    animating=true;
+    closeAllDetails();
+    toolsOn=false;
+    app.classList.remove('tools-on');
+    toolsBtn.classList.remove('active');
+
+    caption.textContent='保留節點 / AI 收攏節點';
+    stage.querySelectorAll('.shared').forEach(el=>el.classList.add('preview-keep'));
+    stage.querySelectorAll('.collapse').forEach(el=>el.classList.add('preview-collapse'));
+    await sleep(180);
+
+    caption.textContent='AI 依序收攏工作';
+    const stagger=48;
+    await Promise.all(followers.map((id,i)=>flyFollower(station(id),i*stagger)));
+
+    await morphAnchors();
+    mode='ai';
+    app.classList.add('ai-view');
+    clearPreview();
+
+    await shrinkTraditionalLineAndMoveStations();
+    await sleep(60);
+    await growAILine();
+
+    tradBtn.classList.remove('active');
+    aiBtn.classList.add('active');
+    toolsBtn.classList.remove('hidden');
+    expandBtn.classList.remove('hidden');
+    caption.textContent='點轉乘站可展開工作內容';
+    animating=false;
+  }
+
+  async function switchToTrad(){
+    if(animating||mode==='trad')return;
+    animating=true;
+    closeAllDetails();
+    toolsOn=false;
+    app.classList.remove('tools-on');
+    toolsBtn.classList.remove('active');
+
+    const pos = traditionalPositions();
+    ['s1','s7','s22'].forEach(id=>setPos(station(id),pos[id]));
+    Object.values(aiLineEls).forEach(el=>el.classList.add('shrinkX'));
+    await sleep(280);
+    Object.values(aiLineEls).forEach(el=>{
+      el.classList.add('hidden');
+      el.classList.remove('shrinkX','growX');
+    });
+
+    ['ha','hv','hf'].forEach(id=>{
+      station(id).animate([
+        {opacity:1,transform:'translateX(-50%) scale(1)'},
+        {opacity:0,transform:'translateX(-50%) scale(.6)'}
+      ],{duration:160,easing:'ease'});
+    });
+    await sleep(170);
+    ['ha','hv','hf'].forEach(id=>station(id).classList.add('hidden'));
+
+    stage.querySelectorAll('.collapse').forEach(el=>{
+      el.getAnimations().forEach(animation=>animation.cancel());
+      setPos(el,pos[el.dataset.id]);
+      el.classList.remove('source-hidden');
+      el.style.opacity='';
+      el.style.transform='';
+      el.animate([
+        {opacity:0,transform:'translateX(-50%) scale(.65)'},
+        {opacity:1,transform:'translateX(-50%) scale(1)'}
+      ],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'});
+    });
+
+    layoutTraditional();
+    Object.values(tradLineEls).forEach(el=>{
+      el.style.opacity='1';
+      el.classList.remove('shrinkX','shrinkY','growX','growY');
+      void el.offsetWidth;
+      if(el.classList.contains('vertical')) el.classList.add('growY');
+      else el.classList.add('growX');
+    });
+
+    mode='trad';
+    app.classList.remove('ai-view');
+    tradBtn.classList.add('active');
+    aiBtn.classList.remove('active');
+    toolsBtn.classList.add('hidden');
+    expandBtn.classList.add('hidden');
+    caption.textContent='';
+
+    await sleep(360);
+    Object.values(tradLineEls).forEach(el=>el.classList.remove('growX','growY'));
+    animating=false;
+  }
+
+  function closeAllDetails(){
+    stage.querySelectorAll('.hub').forEach(h=>h.classList.remove('open'));
+    expandBtn.textContent='全部展開';
+  }
+
+  stage.querySelectorAll('.hub').forEach(hub=>{
+    hub.addEventListener('click',()=>{
+      if(mode!=='ai'||animating)return;
+      hub.classList.toggle('open');
+      const hubs=[...stage.querySelectorAll('.hub')];
+      expandBtn.textContent=hubs.every(h=>h.classList.contains('open'))?'全部收回':'全部展開';
+    });
+  });
+
+  toolsBtn.addEventListener('click',()=>{
+    if(mode!=='ai'||animating)return;
+    toolsOn=!toolsOn;
+    app.classList.toggle('tools-on',toolsOn);
+    toolsBtn.classList.toggle('active',toolsOn);
+  });
+
+  expandBtn.addEventListener('click',()=>{
+    if(mode!=='ai'||animating)return;
+    const hubs=[...stage.querySelectorAll('.hub')];
+    const open=!hubs.every(h=>h.classList.contains('open'));
+    hubs.forEach(h=>h.classList.toggle('open',open));
+    expandBtn.textContent=open?'全部收回':'全部展開';
+  });
+
+  tradBtn.addEventListener('click',switchToTrad);
+  aiBtn.addEventListener('click',switchToAI);
+  window.addEventListener('resize',()=>{
+    if(mode==='trad')layoutTraditional();
+    else layoutAI();
+  });
+
+  initialize();
+})();
+</script>
+</body>
+</html>
